@@ -1,0 +1,440 @@
+#include "My_Usart.h"
+#include <sys/stat.h>
+
+/*
+ * 发送环形队列结构：
+ * - head: 生产者写入位置（主循环或任务上下文）
+ * - tail: 消费者取出位置（TXE 中断上下文）
+ */
+typedef struct
+{
+	USART_TypeDef *instance;
+	volatile uint16_t head;
+	volatile uint16_t tail;
+	uint8_t buf[USART_TX_BUF_SIZE];
+} USART_TxAsyncQueue;
+
+/* 每个 USART 实例对应一套异步发送队列。 */
+static USART_TxAsyncQueue g_usart_tx_q1 = {USART1, 0U, 0U, {0}};
+static USART_TxAsyncQueue g_usart_tx_q2 = {USART2, 0U, 0U, {0}};
+static USART_TxAsyncQueue g_usart_tx_q3 = {USART3, 0U, 0U, {0}};
+static USART_TxAsyncQueue g_usart_tx_q4 = {USART4, 0U, 0U, {0}};
+static USART_TxAsyncQueue g_usart_tx_q5 = {UART5, 0U, 0U, {0}};
+
+/* 根据 USART 实例返回对应发送队列。 */
+static USART_TxAsyncQueue *usart_get_tx_queue(USART_TypeDef *USARTx)
+{
+	if (USARTx == USART1)
+	{
+		return &g_usart_tx_q1;
+	}
+	if (USARTx == USART2)
+	{
+		return &g_usart_tx_q2;
+	}
+	if (USARTx == USART3)
+	{
+		return &g_usart_tx_q3;
+	}
+	if (USARTx == USART4)
+	{
+		return &g_usart_tx_q4;
+	}
+	if (USARTx == UART5)
+	{
+		return &g_usart_tx_q5;
+	}
+	return 0;
+}
+
+/* 进入临界区：返回进入前 PRIMASK 状态。 */
+static uint32_t usart_enter_critical(void)
+{
+	uint32_t primask;
+
+	__asm volatile("MRS %0, PRIMASK" : "=r"(primask));
+	__asm volatile("cpsid i" : : : "memory");
+	return primask;
+}
+
+/* 退出临界区：仅在进入前中断开放时恢复中断。 */
+static void usart_exit_critical(uint32_t primask)
+{
+	if ((primask & 0x1U) == 0U)
+	{
+		__asm volatile("cpsie i" : : : "memory");
+	}
+}
+
+/* 统一映射：API 串口 ID -> USART 寄存器实例。 */
+static USART_TypeDef *usart_id_to_instance(API_USART_Id_t id)
+{
+	if (id == API_USART1)
+	{
+		return USART1;
+	}
+	if (id == API_USART2)
+	{
+		return USART2;
+	}
+	if (id == API_USART3)
+	{
+		return USART3;
+	}
+	if (id == API_USART4)
+	{
+		return USART4;
+	}
+	if (id == API_USART5)
+	{
+		return UART5;
+	}
+	return 0;
+}
+
+static void usart_enable_tx_irq(USART_TypeDef *USARTx)
+{
+	USARTx->CR1 |= USART_CR1_TXEIE;
+}
+
+static void usart_disable_tx_irq(USART_TypeDef *USARTx)
+{
+	USARTx->CR1 &= ~USART_CR1_TXEIE;
+}
+
+static uint8_t usart_is_tx_irq_enabled(USART_TypeDef *USARTx)
+{
+	if ((USARTx->CR1 & USART_CR1_TXEIE) != 0U)
+	{
+		return 1U;
+	}
+	return 0U;
+}
+
+static uint8_t usart_is_tx_ready(USART_TypeDef *USARTx)
+{
+	if ((USARTx->SR & USART_SR_TXE) != 0U)
+	{
+		return 1U;
+	}
+	return 0U;
+}
+
+static uint8_t usart_is_rx_ready(USART_TypeDef *USARTx)
+{
+	if ((USARTx->SR & USART_SR_RXNE) != 0U)
+	{
+		return 1U;
+	}
+	return 0U;
+}
+
+static uint32_t usart_read_data(USART_TypeDef *USARTx)
+{
+	return USARTx->DR;
+}
+
+static void usart_write_data(USART_TypeDef *USARTx, uint8_t data)
+{
+	USARTx->DR = data;
+}
+
+/*
+ * 把 USARTx 寄存器实例转换为 API 层 ID。
+ * 这样可以复用 API_USART_WriteByte 完成阻塞兜底发送。
+ */
+static uint8_t usart_instance_to_id(USART_TypeDef *USARTx, API_USART_Id_t *id)
+{
+	if (id == 0)
+	{
+		return 0U;
+	}
+
+	if (USARTx == USART1)
+	{
+		*id = API_USART1;
+		return 1U;
+	}
+	if (USARTx == USART2)
+	{
+		*id = API_USART2;
+		return 1U;
+	}
+	if (USARTx == USART3)
+	{
+		*id = API_USART3;
+		return 1U;
+	}
+	if (USARTx == USART4)
+	{
+		*id = API_USART4;
+		return 1U;
+	}
+	if (USARTx == UART5)
+	{
+		*id = API_USART5;
+		return 1U;
+	}
+	return 0U;
+}
+
+/*
+ * 发送 1 字节：
+ * 1) 先尝试异步入队；
+ * 2) 入队失败（队列满/实例不支持）时，退化为阻塞发送兜底。
+ */
+void usart_send_byte(USART_TypeDef *USARTx, uint8_t Byte)
+{
+	API_USART_Id_t id;
+
+	if (usart_send_byte_async(USARTx, Byte) != 0U)
+	{
+		return;
+	}
+
+	if (usart_instance_to_id(USARTx, &id) == 0U)
+	{
+		return;
+	}
+
+	API_USART_WriteByte(id, Byte);
+}
+
+/*
+ * 异步发送 1 字节：成功入队后由 TXE 中断搬运发送；
+ * 入队失败（队列满/实例不支持）时返回 0，由上层退化为阻塞发送兜底。
+ */
+uint8_t usart_send_byte_async(USART_TypeDef *USARTx, uint8_t Byte)
+{
+	uint32_t primask;
+	uint16_t next_head;
+	USART_TxAsyncQueue *q;
+
+	q = usart_get_tx_queue(USARTx);
+	if (q == 0)
+	{
+		return 0U;
+	}
+
+	primask = usart_enter_critical();
+
+	next_head = (uint16_t)((q->head + 1U) % USART_TX_BUF_SIZE);
+	if (next_head == q->tail)
+	{
+		usart_exit_critical(primask);
+		return 0U;
+	}
+
+	q->buf[q->head] = Byte;
+	q->head = next_head;
+	usart_enable_tx_irq(q->instance);
+
+	usart_exit_critical(primask);
+	return 1U;
+}
+
+/* 发送 C 字符串（逐字节调用 usart_send_byte）。 */
+void usart_SendString(USART_TypeDef *USARTx, const char *String)
+{
+	uint16_t i;
+
+	if (String == 0)
+	{
+		return;
+	}
+
+	for (i = 0U; String[i] != '\0'; i++)
+	{
+		usart_send_byte(USARTx, (uint8_t)String[i]);
+	}
+}
+
+/* 数字转十进制字符串后发送。 */
+void usart_send_number(USART_TypeDef *USARTx, uint32_t Number)
+{
+	char String[11];
+
+	(void)snprintf(String, sizeof(String), "%lu", (unsigned long)Number);
+	usart_SendString(USARTx, String);
+}
+
+/* 简单幂函数，供上层保留兼容调用。 */
+uint32_t usart_pow(uint32_t X, uint32_t Y)
+{
+	uint32_t Result;
+
+	Result = 1U;
+	while (Y--)
+	{
+		Result *= X;
+	}
+
+	return Result;
+}
+
+/* 连续发送字节数组。 */
+void usart_send_array(USART_TypeDef *USARTx, uint8_t *Array, uint16_t Length)
+{
+	uint16_t i;
+
+	if (Array == 0)
+	{
+		return;
+	}
+
+	for (i = 0U; i < Length; i++)
+	{
+		usart_send_byte(USARTx, Array[i]);
+	}
+}
+
+/* printf 字符输出重定向。 */
+int fputc(int ch, FILE *f)
+{
+	(void)f;
+	usart_send_byte(PRINTF_USART, (uint8_t)ch);
+	return ch;
+}
+
+/*
+ * newlib-nano 的 printf 通常走 _write，而不是逐字符调用 fputc。
+ * 实现 _write 后，printf("...") 才会真正从串口输出。
+ */
+int _write(int file, char *ptr, int len)
+{
+	int i;
+
+	(void)file;
+	if ((ptr == 0) || (len <= 0))
+	{
+		return 0;
+	}
+
+	for (i = 0; i < len; i++)
+	{
+		usart_send_byte(PRINTF_USART, (uint8_t)ptr[i]);
+	}
+
+	return len;
+}
+
+/* newlib-nano 最小 syscalls 桩，避免链接阶段未实现告警。 */
+int _close(int file)
+{
+	(void)file;
+	return -1;
+}
+
+int _fstat(int file, struct stat *st)
+{
+	(void)file;
+	if (st != 0)
+	{
+		st->st_mode = S_IFCHR;
+	}
+	return 0;
+}
+
+int _getpid(void)
+{
+	return 1;
+}
+
+int _isatty(int file)
+{
+	(void)file;
+	return 1;
+}
+
+int _kill(int pid, int sig)
+{
+	(void)pid;
+	(void)sig;
+	return -1;
+}
+
+int _lseek(int file, int ptr, int dir)
+{
+	(void)file;
+	(void)ptr;
+	(void)dir;
+	return 0;
+}
+
+int _read(int file, char *ptr, int len)
+{
+	(void)file;
+	(void)ptr;
+	(void)len;
+	return 0;
+}
+
+/* 格式化输出：先格式化到本地缓冲，再统一发送。 */
+void usart_printf(USART_TypeDef *USARTx, const char *format, ...)
+{
+	char String[128];
+	int len;
+	va_list arg;
+
+	va_start(arg, format);
+	len = vsnprintf(String, sizeof(String), format, arg);
+	va_end(arg);
+
+	if (len <= 0)
+	{
+		return;
+	}
+
+	usart_SendString(USARTx, String);
+}
+
+/*
+ * TXE 中断服务分发函数：队列有数据时写 DR，空时关闭 TXEIE。
+ */
+void usart_tx_irq_handler(USART_TypeDef *USARTx)
+{
+	USART_TxAsyncQueue *q;
+
+	q = usart_get_tx_queue(USARTx);
+	if (q == 0)
+	{
+		return;
+	}
+
+	if ((q->tail != q->head) && (usart_is_tx_ready(q->instance) != 0U))
+	{
+		usart_write_data(q->instance, q->buf[q->tail]);
+		q->tail = (uint16_t)((q->tail + 1U) % USART_TX_BUF_SIZE);
+	}
+
+	if (q->tail == q->head)
+	{
+		usart_disable_tx_irq(q->instance);
+	}
+}
+
+void usart_irq_dispatch_by_id(API_USART_Id_t id, uint32_t *rxData, uint8_t *rxValid)
+{
+	USART_TypeDef *instance;
+
+	instance = usart_id_to_instance(id);
+	if (instance == 0)
+	{
+		return;
+	}
+
+	if ((rxData != 0) && (rxValid != 0))
+	{
+		*rxValid = 0U;
+		if (usart_is_rx_ready(instance) != 0U)
+		{
+			*rxData = usart_read_data(instance);
+			*rxValid = 1U;
+		}
+	}
+
+	if ((usart_is_tx_irq_enabled(instance) != 0U) && (usart_is_tx_ready(instance) != 0U))
+	{
+		usart_tx_irq_handler(instance);
+	}
+}

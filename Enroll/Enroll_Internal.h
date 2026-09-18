@@ -23,9 +23,7 @@
 #include "adc.h"
 #include "usart.h"
 #include "tim.h"
-#include "OLED.h"
 #include "exti.h"
-#include "HCSR04.h"
 #include "NRF24L01.h"
 
 #include <stddef.h>

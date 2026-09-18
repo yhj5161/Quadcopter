@@ -100,16 +100,6 @@ static const KEY_Config_t s_keyTable[] =
 };
 #undef ENROLL_KEY_ITEM
 
-/* OLED SPI 控制表：把 HW_OLED_SPI_CTRL_MAP 展开成 OLED_SpiCtrlConfig_t。 */
-#define ENROLL_OLED_SPI_CTRL_ITEM(dcPort, dcPin, resPort, resPin) \
-	{ dcPort, dcPin, resPort, resPin },
-
-static const OLED_SpiCtrlConfig_t s_oledSpiCtrlTable[] =
-{
-	HW_OLED_SPI_CTRL_MAP(ENROLL_OLED_SPI_CTRL_ITEM)
-};
-#undef ENROLL_OLED_SPI_CTRL_ITEM
-
 /* NRF24L01 控制表：把 HW_NRF24L01_CTRL_MAP 展开成 NRF24L01_CtrlConfig_t。 */
 #define ENROLL_NRF24L01_CTRL_ITEM(cePort, cePin) \
 	{ cePort, cePin },
@@ -119,17 +109,6 @@ static const NRF24L01_CtrlConfig_t s_nrf24l01CtrlTable[] =
 	HW_NRF24L01_CTRL_MAP(ENROLL_NRF24L01_CTRL_ITEM)
 };
 #undef ENROLL_NRF24L01_CTRL_ITEM
-
-/*******************************HCSR04***********************************/
-/* HC-SR04 配置表：把 HW_HCSR04_MAP 展开成 HCSR04_Config_t。 */
-#define ENROLL_HCSR04_ITEM(id, trigPort, trigPin, echoPort, echoPin) \
-	{ trigPort, trigPin, echoPort, echoPin },
-
-static const HCSR04_Config_t s_hcsr04Table[] =
-{
-	HW_HCSR04_MAP(ENROLL_HCSR04_ITEM)
-};
-#undef ENROLL_HCSR04_ITEM
 
 /****************************** API资源注册层 ************************/
 /* PWM 注册：登记板级 PWM 资源表。 */
@@ -202,19 +181,6 @@ void Enroll_LED_Register(void)
 void Enroll_KEY_Register(void)
 {
 	KEY_Register(s_keyTable, HW_KEY_COUNT);
-}
-
-/* OLED 注册：登记 SPI 模式下的 DC/RES 控制引脚。 */
-void Enroll_OLED_Register(void)
-{
-	OLED_RegisterSpiCtrl(s_oledSpiCtrlTable, HW_OLED_SPI_CTRL_COUNT);
-}
-
-/* 编码器注册 */
-/* HC-SR04 超声波注册：登记板级 Trig/Echo 引脚表。 */
-void Enroll_HCSR04_Register(void)
-{
-	HCSR04_Register(s_hcsr04Table, HW_HCSR04_COUNT);
 }
 
 /* NRF24L01 注册：登记板级 CE 控制脚（SPI 引脚由 API_SPI 统一注册）。 */

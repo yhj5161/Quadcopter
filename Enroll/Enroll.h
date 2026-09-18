@@ -57,12 +57,6 @@ void Enroll_LED_Register(void);
 /* KEY 资源注册：登记 KEY 映射表。 */
 void Enroll_KEY_Register(void);
 
-/* OLED 注册：注册 SPI 模式下的 DC/RES 板级控制引脚。 */
-void Enroll_OLED_Register(void);
-
-/* HC-SR04 超声波资源注册：登记板级 Trig/Echo 引脚表。 */
-void Enroll_HCSR04_Register(void);
-
 /* NRF24L01 资源注册：登记板级 CE 控制脚。 */
 void Enroll_NRF24L01_Register(void);
 

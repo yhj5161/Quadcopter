@@ -4,8 +4,6 @@
 #include "usart.h"
 #include "My_Usart/My_Usart.h"
 #include "KEY.h"
-#include "JY61P/JY61P.h"
-#include "SU03T/SU03T.h"
 
 /* 程序运行的时间戳（s） */
 uint32_t Timer_Bsp_t = 0;
@@ -92,8 +90,6 @@ void Control_Task_Housekeeping_Callback(API_TIM_Id_t id)
 
 /*
  * USART 中断回调：读取 RX 字节并分发到对应模块。
- * - USART1 → JY61P 姿态模块（主动上报，入环形缓冲）
- * - UART5  → SU-03T 语音模块（入环形缓冲）
  */
 void Control_Task_USART_Callback(API_USART_Id_t id)
 {
@@ -105,15 +101,7 @@ void Control_Task_USART_Callback(API_USART_Id_t id)
 	usart_irq_dispatch_by_id(id, &data, &rxValid);
 	if (rxValid != 0U)
 	{
-		if (id == API_USART1)
-		{
-			JY61P_RxPush((uint8_t)data);
-		}
-		else if (id == API_USART5)
-		{
-			SU03T_RxPush((uint8_t)data);
-		}
-		else if (id == API_USART4)
+		if (id == API_USART4)
 		{
 			/* UART4：帧解析状态机（协议 s12,-34,56e），非法帧整体丢弃 */
 			uint8_t c = (uint8_t)data;

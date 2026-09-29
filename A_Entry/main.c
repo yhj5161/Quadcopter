@@ -84,9 +84,9 @@ int main(void)
 	API_TIM_RegisterIrqHandler(API_TIM3, Control_Task_Housekeeping_Callback);
 
 	/* 初始化层：初始化相关外设，启动硬件功能 */
-	API_USART_Init(API_USART1, 115200U);	/* USART1: 预留姿态传感器 */
-	API_USART_Init(API_USART3, 115200U);	/* USART3: 调试打印 */
-	API_USART_Init(API_USART4, 115200U);	/* UART4: 遥测输出 */
+	API_USART_Init(API_USART1, 115200U);	/* USART1: 串口打印 + 串口控制 */
+	/* USART3 已关闭 */
+	/* UART4 硬件未接，暂时关闭 */
 	/* PWM 初始化：TIM1 四通道，50Hz（四轴电机常用 50~400Hz） */
 	API_PWM_Init(API_PWM_TIM1, 400U - 1U, 8U - 1U);
 	API_ADC_Init(API_ADC1);
@@ -101,7 +101,6 @@ int main(void)
 	/* BSP硬件抽象层初始化 */
 	LED_Init(LED_LOW);
 	KEY_Init();
-
 	/* ======================== 创建任务，启动调度器 ======================== */
 	(void)xTaskCreate(ControlTask, "control", TASK_STACK_CONTROL, NULL, TASK_PRIO_CONTROL, NULL);
 	(void)xTaskCreate(SensorTask, "sensor", TASK_STACK_SENSOR, NULL, TASK_PRIO_SENSOR, NULL);
@@ -192,32 +191,33 @@ static void DisplayTask(void *argument)
 
 	for (;;)
 	{
-		if (print_task_flag != 0U)
 		{
 			print_task_flag = 0U;
-			usart_printf(USART4, "t=%lu\r\n", (unsigned long)Timer_Bsp_t);
+			usart_printf(USART1, "t=%lu\r\n", (unsigned long)Timer_Bsp_t);
 
 			if (s_nrfRxCount != 0U)
 			{
-				usart_printf(USART4, "NRF cnt=%lu d0=%u d1=%u d2=%u d3=%u\r\n",
+				usart_printf(USART1, "NRF cnt=%lu d0=%u d1=%u d2=%u d3=%u\r\n",
 				             (unsigned long)s_nrfRxCount,
 				             (unsigned int)s_nrfRxBuf[0], (unsigned int)s_nrfRxBuf[1],
 				             (unsigned int)s_nrfRxBuf[2], (unsigned int)s_nrfRxBuf[3]);
 			}
 		}
 
-		/* UART4 收到帧 s12,-34,56e → 打印 */
+		#if 0  /* UART4 已关闭，CMD 回显暂时禁用 */
+		/* USART1 收到帧 s12,-34,56e → 打印 */
 		if (g_rxFrameReady != 0U)
 		{
 			g_rxFrameReady = 0U;
-			usart_printf(USART4, "CMD: count=%d", (int)g_rxFrameCount);
-			if (g_rxFrameCount > 0U) usart_printf(USART4, " [0]=%d", (int)g_rxFrame[0]);
-			if (g_rxFrameCount > 1U) usart_printf(USART4, " [1]=%d", (int)g_rxFrame[1]);
-			if (g_rxFrameCount > 2U) usart_printf(USART4, " [2]=%d", (int)g_rxFrame[2]);
-			usart_printf(USART4, "\r\n");
+			usart_printf(USART1, "CMD: count=%d", (int)g_rxFrameCount);
+			if (g_rxFrameCount > 0U) usart_printf(USART1, " [0]=%d", (int)g_rxFrame[0]);
+			if (g_rxFrameCount > 1U) usart_printf(USART1, " [1]=%d", (int)g_rxFrame[1]);
+			if (g_rxFrameCount > 2U) usart_printf(USART1, " [2]=%d", (int)g_rxFrame[2]);
+			usart_printf(USART1, "\r\n");
 		}
+#endif  /* UART4 已关闭 */
 
-		vTaskDelay(pdMS_TO_TICKS(TASK_PERIOD_DISPLAY));
+	vTaskDelay(pdMS_TO_TICKS(TASK_PERIOD_DISPLAY));
 	}
 }
 

@@ -12,7 +12,7 @@ LED1=PC11  LED2=PC13  LED3=PB2
 */
 /* LED 板级映射：LED1=PC11，LED2=PC13，LED3=PB2 ,Buzzer1=PC5 */
 #define HW_LED_MAP(X) \
-	X(LED1, GPIOD, GPIO_Pin_8) \
+	X(LED1, GPIOE, GPIO_Pin_2) \
 	X(LED2, GPIOE, GPIO_Pin_3) \
 	X(LED3, GPIOE, GPIO_Pin_4) \
 	X(Buzzer1, GPIOC, GPIO_Pin_5)
@@ -116,6 +116,25 @@ LED1=PC11  LED2=PC13  LED3=PB2
 /* NRF24L01 控制引脚映射：注册 1 组 CE */
 #define HW_NRF24L01_CTRL_MAP(X) \
 	X(HW_NRF24L01_CE_PORT, HW_NRF24L01_CE_PIN)
+
+/* ICM42688P 引脚定义：CS=PB12, SCK=PB13, MISO=PB14, MOSI=PB15 (F407 硬件 SPI2, AF5) */
+#define HW_ICM_SCK_PORT             GPIOB
+#define HW_ICM_SCK_PIN              GPIO_Pin_13
+#define HW_ICM_MOSI_PORT            GPIOB
+#define HW_ICM_MOSI_PIN             GPIO_Pin_15
+#define HW_ICM_MISO_PORT            GPIOB
+#define HW_ICM_MISO_PIN             GPIO_Pin_14
+#define HW_ICM_CS_PORT              GPIOB
+#define HW_ICM_CS_PIN               GPIO_Pin_12
+
+/* ICM42688 引脚映射：注册 1 组(纯引脚,无 EXTI——500Hz 轮询读取)。
+   SPI 操作通过函数指针注入，由 Enroll 层绑定到 F407_HW_SPI2_Init/Transfer/Cs。 */
+#define HW_ICM42688_MAP(X) \
+	X(HW_ICM_SCK_PORT, HW_ICM_SCK_PIN, \
+	  HW_ICM_MOSI_PORT, HW_ICM_MOSI_PIN, \
+	  HW_ICM_MISO_PORT, HW_ICM_MISO_PIN, \
+	  HW_ICM_CS_PORT, HW_ICM_CS_PIN)
+#define HW_ICM42688_COUNT           1U
 
 /* 当前板子上注册了 4 个 LED */
 #define HW_LED_COUNT  4U

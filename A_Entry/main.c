@@ -15,6 +15,7 @@
 #include "My_Usart/My_Usart.h"
 #include "API_I2C.h"
 #include "API_SPI.h"
+#include "ICM42688.h"
 #include "Control_Task/Control_Task.h"
 
 /*BSP硬件抽象层*/
@@ -78,6 +79,7 @@ int main(void)
 	Enroll_LED_Register();
 	Enroll_KEY_Register();
 	Enroll_NRF24L01_Register();
+	Enroll_ICM42688_Register();
 
 	/* 注册后绑定中断回调*/
 	Enroll_USART_RegisterIrqHandler(Control_Task_USART_Callback);
@@ -97,9 +99,11 @@ int main(void)
 	API_SPI_Init();
 	App_I2C_ScanOnce();
 	NRF24L01_Init();
+	ICM42688_Init();
 
 	/* BSP硬件抽象层初始化 */
 	LED_Init(LED_LOW);
+	LED_Control(LED1, LED_HIGH);
 	KEY_Init();
 	/* ======================== 创建任务，启动调度器 ======================== */
 	(void)xTaskCreate(ControlTask, "control", TASK_STACK_CONTROL, NULL, TASK_PRIO_CONTROL, NULL);
@@ -164,8 +168,8 @@ static void ControlTask(void *argument)
 }
 
 /*
- * 传感器任务：读取 IMU / 气压计 / 磁力计数据。
- * TODO: 接入新 IMU 后在此实现姿态解算。
+ * 传感器任务：读取 IMU 并更新姿态角（每 2ms / 500Hz）。
+ * TODO: BMP280 气压计读取（定高）, QMC5883P 磁力计（Yaw 融合）。
  */
 static void SensorTask(void *argument)
 {
@@ -174,10 +178,7 @@ static void SensorTask(void *argument)
 
 	for (;;)
 	{
-		/* TODO: IMU 姿态读取与解算 */
-		/* TODO: BMP280 气压计读取（定高） */
-		/* TODO: QMC5883P 磁力计读取（航向） */
-
+		ICM42688_ReadSensor();
 		vTaskDelayUntil(&lastWake, pdMS_TO_TICKS(TASK_PERIOD_SENSOR));
 	}
 }
@@ -203,6 +204,11 @@ static void DisplayTask(void *argument)
 				             (unsigned int)s_nrfRxBuf[2], (unsigned int)s_nrfRxBuf[3]);
 			}
 		}
+	usart_printf(USART1, "ICM R=%.1f P=%.1f Y=%.1f\r\n", (double)g_icm42688.roll, (double)g_icm42688.pitch, (double)g_icm42688.yaw);
+usart_printf(USART1, "gz16=%d gzreg=%d\r\n",
+             (int)g_icm42688.raw_gz,
+             (unsigned)g_icm42688.dbg_frame[12]);
+
 
 		#if 0  /* UART4 已关闭，CMD 回显暂时禁用 */
 		/* USART1 收到帧 s12,-34,56e → 打印 */

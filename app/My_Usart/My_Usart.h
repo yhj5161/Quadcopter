@@ -28,7 +28,7 @@
  *   UART4  (PA0/PA1, 115200)  → 遥测/调试口
  */
 #ifndef PRINTF_USART
-#define PRINTF_USART USART3
+#define PRINTF_USART USART1
 #endif
 
 /* CR1.TXEIE：发送寄存器空中断使能位。 */
@@ -82,5 +82,46 @@ void usart_tx_irq_handler(USART_TypeDef *USARTx);
 
 /* 根据 API 串口 ID 处理 RX/TX 中断事件（由注册层回调触发）。 */
 void usart_irq_dispatch_by_id(API_USART_Id_t id, uint32_t *rxData, uint8_t *rxValid);
+
+/*
+ * 串口数据包解析（协议 s12,-34,56e）：
+ *   包头 's' + 逗号分隔的十进制数 + 包尾 'e'，每个数支持前导负号。
+ *   一路串口一个 USART_DataType 实例，可多路串口复用同一套解析逻辑。
+ *
+ * 用法（接收中断里喂字节，主循环/任务里读结果）：
+ *   usart_Dispose_Data(USART1, &dec, c);
+ *   if (dec.state == 2U) { 本帧收完，用 dec.count / dec.data[i] 读取 }
+ *
+ * 示例帧：
+ *   s1,e          → 1 个数，常用于开关命令（0=灭 / 1=亮）
+ *   s12,-34,56e   → 3 个数
+ */
+
+/* 解析数据包后最多保存的数据项个数。 */
+#define Data_len 10U
+
+/* 串口数据包解析状态：state==2 表示完整一帧已收完。 */
+typedef struct
+{
+	uint16_t data[Data_len];   /* 本帧解析出的数据，有效项为 data[0..count-1] */
+	uint8_t count;             /* 本帧实际解析出的个数 */
+	uint8_t state;             /* 0=等包头 1=收数 2=一帧完成 */
+	uint8_t current_index;     /* 正在写入第几个数 */
+	uint8_t buffer[16];        /* 当前数的 ASCII 缓冲 */
+	uint8_t buffer_len;        /* 当前数已收的字符数 */
+} USART_DataType;
+
+/*
+ * 接收数据包解析函数：喂一个字节进去走状态机。
+ * 建议在 RXNE 分支读取到字节后调用；
+ * 完整一帧收完后 state=2，可通过 USART_Deal / dec->data / dec->count 读取结果。
+ */
+void usart_Dispose_Data(USART_TypeDef *USARTx, USART_DataType *dec, uint8_t RxData);
+
+/*
+ * 安全读取已解析数据项。
+ * 返回：索引有效则返回数据，否则返回 0。
+ */
+int16_t USART_Deal(USART_DataType *dec, int8_t index);
 
 #endif

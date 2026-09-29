@@ -438,3 +438,133 @@ void usart_irq_dispatch_by_id(API_USART_Id_t id, uint32_t *rxData, uint8_t *rxVa
 		usart_tx_irq_handler(instance);
 	}
 }
+
+/* 把 ASCII 数字缓冲解析成 int16_t（支持前导 '-'），非法字符按 0 处理。 */
+static int16_t Usart_ParseNum(const uint8_t *buf, uint8_t len)
+{
+	uint8_t i = 0U;
+	uint8_t neg = 0U;
+	int16_t val = 0;
+
+	if ((len > 0U) && (buf[0] == '-'))
+	{
+		neg = 1U;
+		i = 1U;
+	}
+	for (; i < len; i++)
+	{
+		if ((buf[i] >= '0') && (buf[i] <= '9'))
+		{
+			val = (int16_t)(val * 10 + (buf[i] - '0'));
+		}
+		else
+		{
+			return 0;
+		}
+	}
+	return neg ? (int16_t)(-val) : val;
+}
+
+/*
+ * 接收数据包解析状态机（协议 s12,-34,56e）：喂一个字节走状态机。
+ * - 在接收中断里逐字节调用；完整一帧收完后 state 置为 2。
+ * - 读取方（主循环/任务）在 dec.state==2 时用 USART_Deal / dec->data / dec->count 取结果。
+ * - count 在每存下一个数时立即更新，任意字段数（含单值帧 s0,e / s1,e）都自洽。
+ * - 消费完请把 dec->state 清 0，等待下一帧；非法帧会被整帧丢弃。
+ */
+void usart_Dispose_Data(USART_TypeDef *USARTx, USART_DataType *dec, uint8_t RxData)
+{
+	(void)USARTx;
+
+	if (dec == 0)
+	{
+		return;
+	}
+
+	switch (dec->state)
+	{
+	case 0:
+		if (RxData == 's')
+		{
+			dec->state = 1U;
+			dec->current_index = 0U;
+			dec->buffer_len = 0U;
+			memset(dec->buffer, 0, sizeof(dec->buffer));
+		}
+		break;
+
+	case 1:
+		if (RxData == 'e')
+		{
+			if ((dec->buffer_len > 0U) && (dec->current_index < Data_len))
+			{
+				dec->data[dec->current_index] = (uint16_t)Usart_ParseNum(dec->buffer, dec->buffer_len);
+				dec->count = (uint8_t)(dec->current_index + 1U);
+			}
+			dec->state = 2U;
+		}
+		else if (RxData == ',')
+		{
+			if (dec->buffer_len > 0U)
+			{
+				if (dec->current_index < Data_len)
+				{
+					dec->data[dec->current_index] = (uint16_t)Usart_ParseNum(dec->buffer, dec->buffer_len);
+					dec->current_index++;
+					dec->count = dec->current_index;   /* 立即更新已解析个数，兼容单值帧 */
+				}
+				dec->buffer_len = 0U;
+				memset(dec->buffer, 0, sizeof(dec->buffer));
+			}
+		}
+		else if (((RxData >= '0') && (RxData <= '9')) || (RxData == '-'))
+		{
+			if (dec->buffer_len < (uint8_t)sizeof(dec->buffer))
+			{
+				if ((RxData == '-') && (dec->buffer_len != 0U))
+				{
+					dec->state = 0U;   /* '-' 只能出现在数首 */
+				}
+				else
+				{
+					dec->buffer[dec->buffer_len++] = RxData;
+				}
+			}
+			else
+			{
+				dec->state = 0U;       /* 单个数字过长，弃帧 */
+			}
+		}
+		else
+		{
+			dec->state = 0U;           /* 非法字符，弃帧 */
+		}
+		break;
+
+	case 2:
+		if (RxData == 's')
+		{
+			dec->state = 1U;
+			dec->current_index = 0U;
+			dec->count = 0U;
+			dec->buffer_len = 0U;
+			memset(dec->buffer, 0, sizeof(dec->buffer));
+		}
+		break;
+
+	default:
+		dec->state = 0U;
+		break;
+	}
+}
+
+/* 安全读取已解析数据项：索引有效返回数据，否则返回 0。 */
+int16_t USART_Deal(USART_DataType *dec, int8_t index)
+{
+	if ((dec == 0) || (index < 0) || ((uint8_t)index >= dec->count))
+	{
+		return 0;
+	}
+
+	return (int16_t)dec->data[(uint8_t)index];
+}

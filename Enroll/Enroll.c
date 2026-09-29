@@ -177,6 +177,23 @@ void Enroll_LED_Register(void)
 	LED_Register(s_ledTable, HW_LED_COUNT);
 }
 
+/* ICM42688 表格项: 把 HW_ICM42688_MAP 展开，注入硬件 SPI2 操作函数。 */
+#define ENROLL_ICM42688_ITEM(sckPort, sckPin, mosiPort, mosiPin, misoPort, misoPin, csPort, csPin) \
+	{ sckPort, sckPin, mosiPort, mosiPin, misoPort, misoPin, csPort, csPin, \
+	  F407_HW_SPI2_Init, F407_HW_SPI2_Transfer, F407_HW_SPI2_Cs },
+
+static const ICM42688_CtrlConfig_t s_icmTable[] =
+{
+	HW_ICM42688_MAP(ENROLL_ICM42688_ITEM)
+};
+#undef ENROLL_ICM42688_ITEM
+
+/* ICM42688 注册：登记硬件 SPI2 四根引脚 + 注入 SPI 操作回调。 */
+void Enroll_ICM42688_Register(void)
+{
+	ICM42688_Register(s_icmTable, HW_ICM42688_COUNT);
+}
+
 /* KEY 注册：登记板级 KEY 资源表。 */
 void Enroll_KEY_Register(void)
 {

@@ -25,6 +25,8 @@
 #include "tim.h"
 #include "exti.h"
 #include "NRF24L01.h"
+#include "ICM42688.h"
+#include "f407_hw_spi.h"
 
 #include <stddef.h>
 

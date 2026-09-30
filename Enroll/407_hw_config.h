@@ -10,12 +10,12 @@
 /*
 LED1=PC11  LED2=PC13  LED3=PB2
 */
-/* LED 板级映射：LED1=PC11，LED2=PC13，LED3=PB2 ,Buzzer1=PC5 */
+/* LED 板级映射：LED1=E2绿灯，LED2=E3红灯，LED3=PE4蓝灯 ,Buzzer1=B0 */
 #define HW_LED_MAP(X) \
 	X(LED1, GPIOE, GPIO_Pin_2) \
 	X(LED2, GPIOE, GPIO_Pin_3) \
 	X(LED3, GPIOE, GPIO_Pin_4) \
-	X(Buzzer1, GPIOC, GPIO_Pin_5)
+	X(Buzzer1, GPIOB, GPIO_Pin_0)
 
 /* KEY 板级映射：KEY1=PE3，KEY2=PE5 */
 #define HW_KEY_MAP(X) \

@@ -21,7 +21,6 @@
 
 /*BSP硬件抽象层*/
 #include "LED.h"
-#include "KEY.h"
 #include "NRF24L01.h"
 
 /*FreeRTOS 内核*/
@@ -36,7 +35,7 @@
  * ┌─────────────┬──────┬──────────────────────────────────────────┐
  * │ 任务        │ 优先级│ 职责                                     │
  * ├─────────────┼──────┼──────────────────────────────────────────┤
- * │ ControlTask │ +3   │ 飞控主循环 + 按键/NRF（1ms）              │
+ * │ ControlTask │ +3   │ 飞控主循环 + NRF 接收（1ms）              │
  * │ SensorTask  │ +2   │ 传感器读取（2ms）                         │
  * │ DisplayTask │ +1   │ 遥测串口输出（50ms）                      │
  * └─────────────┴──────┴──────────────────────────────────────────┘
@@ -85,22 +84,20 @@ int main(void)
 	Enroll_I2C_Register();
 	Enroll_SPI_Register();
 	Enroll_LED_Register();
-	Enroll_KEY_Register();
 	Enroll_NRF24L01_Register();
 	Enroll_ICM42688_Register();
 
-	/* 注册后绑定中断回调*/
+	/* 注册后绑定中断回调（Enroll 版遍历板级映射表逐个注册） */
 	Enroll_USART_RegisterIrqHandler(Control_Task_USART_Callback);
-	API_TIM_RegisterIrqHandler(API_TIM3, Control_Task_Housekeeping_Callback);
+	Enroll_TIM_RegisterIrqHandler(Control_Task_Housekeeping_Callback);
 
 	/* 初始化层：初始化相关外设，启动硬件功能 */
 	API_USART_Init(API_USART1, 115200U);	/* USART1: 串口打印 + 串口控制 */
-	/* USART3 已关闭 */
-	/* UART4 硬件未接，暂时关闭 */
-	/* PWM 初始化：TIM1 四通道，50Hz（四轴电机常用 50~400Hz） */
+	/* USART2/3、UART4：板级已注册，暂不初始化 */
+	/* PWM：TIM1 四通道 52.5kHz，当前仅占位（未调用 API_PWM_Setcom） */
 	API_PWM_Init(API_PWM_TIM1, 400U - 1U, 8U - 1U);
 	API_ADC_Init(API_ADC1);
-	API_TIM_Init(API_TIM3, 1U); /* TIM3: 杂务节拍，每 1ms */
+	API_TIM_Init(API_TIM3, 1U); /* API_TIM3(硬件 TIM5): 杂务节拍，每 1ms */
 
 	/* 通信协议初始化 */
 	API_I2C_Init();
@@ -115,7 +112,6 @@ int main(void)
 
 	/* BSP硬件抽象层初始化 */
 	LED_Init(LED_LOW);
-	KEY_Init();
 	/* ======================== 创建任务，启动调度器 ======================== */
 	(void)xTaskCreate(ControlTask, "control", TASK_STACK_CONTROL, NULL, TASK_PRIO_CONTROL, NULL);
 	(void)xTaskCreate(SensorTask, "sensor", TASK_STACK_SENSOR, NULL, TASK_PRIO_SENSOR, NULL);
@@ -129,7 +125,7 @@ int main(void)
 }
 
 /*
- * 控制任务：1ms 轮询 —— 飞控主循环 + 按键 + NRF24L01 接收。
+ * 控制任务：1ms 轮询 —— 飞控主循环 + NRF24L01 接收。
  */
 static void ControlTask(void *argument)
 {
@@ -137,28 +133,6 @@ static void ControlTask(void *argument)
 
 	for (;;)
 	{
-		/* 按键：硬件自检，点亮/熄灭 LED（后续由飞控主循环取代） */
-		key_Get();
-		if (Key == 1U)
-		{
-			LED_Control(LED1, LED_HIGH);
-			Key = 0U;
-		}
-		if (Key == 2U)
-		{
-			LED_Control(LED2, LED_HIGH);
-		}
-		if (Key == 3U)
-		{
-			LED_Control(LED3, LED_HIGH);
-		}
-		if (Key == 4U)
-		{
-			LED_Control(LED1, LED_LOW);
-			LED_Control(LED2, LED_LOW);
-			LED_Control(LED3, LED_LOW);
-		}
-
 		/* NRF24L01 接收 */
 		if (NRF24L01_Receive() == 1U)
 		{

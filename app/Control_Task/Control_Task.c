@@ -3,7 +3,6 @@
 #include "tim.h"
 #include "usart.h"
 #include "My_Usart/My_Usart.h"
-#include "KEY.h"
 #include "LED.h"
 
 /* 程序运行的时间戳（s） */
@@ -12,11 +11,11 @@ uint32_t Timer_Bsp_t = 0;
 /* USART1 帧解析状态实例。
  * 协议：s12,-34,56e —— 's' 包头、',' 分隔各数、'e' 包尾，非法帧整体丢弃。
  * 解析状态机复用 My_Usart 模块（usart_Dispose_Data）。
- * 注：UART4 帧解析随串口一并关闭（硬件未接）。 */
+ * 注：USART3/UART4 板级已注册但未初始化，暂无帧解析。 */
 static USART_DataType s_uart1Dec;
 
 /*
- * API_TIM3: 1ms -> Key + printf + time
+ * API_TIM3（硬件 TIM5）: 1ms -> 秒级时间戳累加（Timer_Bsp_t）
  */
 void Control_Task_Housekeeping_Callback(API_TIM_Id_t id)
 {
@@ -26,8 +25,6 @@ void Control_Task_Housekeeping_Callback(API_TIM_Id_t id)
 	{
 		return;
 	}
-
-	Key_Tick();
 
 	time_t++;
 	if (time_t >= 1000U)

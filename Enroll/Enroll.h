@@ -54,9 +54,6 @@ void Enroll_SPI_Register(void);
 /* LED 资源注册：登记 LED 映射表。 */
 void Enroll_LED_Register(void);
 
-/* KEY 资源注册：登记 KEY 映射表。 */
-void Enroll_KEY_Register(void);
-
 /* ICM42688 资源注册：登记 SPI2 引脚映射，注入硬件 SPI2 操作函数。 */
 void Enroll_ICM42688_Register(void);
 

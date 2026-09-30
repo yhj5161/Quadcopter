@@ -15,7 +15,6 @@
  * 这些头文件只服务于 Enroll.c 的注册实现，不属于对外接口。
  */
 #include "LED.h"
-#include "KEY.h"
 #include "gpio.h"
 #include "API_I2C.h"
 #include "API_SPI.h"
@@ -32,7 +31,7 @@
 
 /*
  * GPIO 统一经 API 层分发到对应 Core 实现。
- * 仅 Enroll.c 内部展开 LED/KEY 配置表时使用。
+ * 仅 Enroll.c 内部展开 LED 配置表时使用。
  */
 #define ENROLL_GPIO_INIT_FN   API_GPIO_InitOutput
 #define ENROLL_GPIO_INPUT_FN  API_GPIO_InitInputPullUp

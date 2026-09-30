@@ -89,17 +89,6 @@ static const LED_Config_t s_ledTable[] =
 };
 #undef ENROLL_LED_ITEM
 
-/*******************************KEY***********************************/
-/* KEY 配置表：把 HW_KEY_MAP 展开成 KEY_Config_t。 */
-#define ENROLL_KEY_ITEM(id, port, pin) \
-	{ id, port, pin, ENROLL_GPIO_INPUT_FN, ENROLL_GPIO_READ_FN },
-
-static const KEY_Config_t s_keyTable[] =
-{
-	HW_KEY_MAP(ENROLL_KEY_ITEM)
-};
-#undef ENROLL_KEY_ITEM
-
 /* NRF24L01 控制表：把 HW_NRF24L01_CTRL_MAP 展开成 NRF24L01_CtrlConfig_t。 */
 #define ENROLL_NRF24L01_CTRL_ITEM(cePort, cePin) \
 	{ cePort, cePin },
@@ -192,12 +181,6 @@ static const ICM42688_CtrlConfig_t s_icmTable[] =
 void Enroll_ICM42688_Register(void)
 {
 	ICM42688_Register(s_icmTable, HW_ICM42688_COUNT);
-}
-
-/* KEY 注册：登记板级 KEY 资源表。 */
-void Enroll_KEY_Register(void)
-{
-	KEY_Register(s_keyTable, HW_KEY_COUNT);
 }
 
 /* NRF24L01 注册：登记板级 CE 控制脚（SPI 引脚由 API_SPI 统一注册）。 */

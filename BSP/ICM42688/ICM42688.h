@@ -4,10 +4,11 @@
 #include <stdint.h>
 
 /*
- * ICM42688.h — ICM-42688-P 6 轴 IMU 驱动(F407 硬件 SPI2 版)
+ * ICM42688.h — ICM-42688-P 6 轴 IMU 驱动
  *
- * 移植自 OmniM0 的软件 SPI 驱动,改走 Core/STM32F407/f407_hw_spi,
- * 采样率 500Hz(ICM ODR 1kHz),加速度 ±16g、陀螺 ±2000dps(与 OmniM0 一致)。
+ * 底层 SPI 通过函数指针注入(见 ICM42688_CtrlConfig_t)，驱动本身不感知
+ * 走的是软件 SPI 还是硬件 SPI；当前板上注册为 F407 硬件 SPI2。
+ * 采样率 500Hz(ICM ODR 1kHz)，加速度 ±16g、陀螺 ±2000dps。
  *
  * 姿态解算内置于 ICM42688_ReadSensor():
  *   Roll / Pitch 由加速度重力方向反算
@@ -51,20 +52,16 @@ typedef struct
 	float gyro_bias_x, gyro_bias_y, gyro_bias_z;
 	uint8_t initialized;
 
-	/* 原始 LSB 诊断值：换算前的原始读数（上电后每次 ReadSensor 刷新） */
+	/* 原始 LSB 诊断值：换算前的原始读数（每次 ReadSensor 刷新） */
 	int16_t raw_ax, raw_ay, raw_az;
 	int16_t raw_gx, raw_gy, raw_gz;
 
-	/* 配置寄存器读回值（Init 后填充，诊断用） */
+	/* 配置寄存器读回值（Init 后填充一次，用于确认配置写入是否生效） */
 	uint8_t who_am_i;
 	uint8_t pwr_mgmt0;
 	uint8_t gyro_cfg0;
 	uint8_t accel_cfg0;
 	uint8_t gyro_cfg1;
-
-	/* 数据就绪状态 / 12B 原始帧转储（诊断用） */
-	uint8_t int_status;
-	uint8_t dbg_frame[14];
 } ICM42688_Data_t;
 
 extern ICM42688_Data_t g_icm42688;

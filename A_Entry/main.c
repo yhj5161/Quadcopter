@@ -115,7 +115,6 @@ int main(void)
 
 	/* BSP硬件抽象层初始化 */
 	LED_Init(LED_LOW);
-	//LED_Control(LED3, LED_HIGH);
 	KEY_Init();
 	/* ======================== 创建任务，启动调度器 ======================== */
 	(void)xTaskCreate(ControlTask, "control", TASK_STACK_CONTROL, NULL, TASK_PRIO_CONTROL, NULL);
@@ -138,7 +137,7 @@ static void ControlTask(void *argument)
 
 	for (;;)
 	{
-		/* KEY 测试 */
+		/* 按键：硬件自检，点亮/熄灭 LED（后续由飞控主循环取代） */
 		key_Get();
 		if (Key == 1U)
 		{
@@ -215,40 +214,26 @@ static void DisplayTask(void *argument)
 
 	for (;;)
 	{
+		usart_printf(USART1, "t=%lu\r\n", (unsigned long)Timer_Bsp_t);
+
+		if (s_nrfRxCount != 0U)
 		{
-			print_task_flag = 0U;
-			usart_printf(USART1, "t=%lu\r\n", (unsigned long)Timer_Bsp_t);
-
-			if (s_nrfRxCount != 0U)
-			{
-				usart_printf(USART1, "NRF cnt=%lu d0=%u d1=%u d2=%u d3=%u\r\n",
-				             (unsigned long)s_nrfRxCount,
-				             (unsigned int)s_nrfRxBuf[0], (unsigned int)s_nrfRxBuf[1],
-				             (unsigned int)s_nrfRxBuf[2], (unsigned int)s_nrfRxBuf[3]);
-			}
+			usart_printf(USART1, "NRF cnt=%lu d0=%u d1=%u d2=%u d3=%u\r\n",
+			             (unsigned long)s_nrfRxCount,
+			             (unsigned int)s_nrfRxBuf[0], (unsigned int)s_nrfRxBuf[1],
+			             (unsigned int)s_nrfRxBuf[2], (unsigned int)s_nrfRxBuf[3]);
 		}
-	usart_printf(USART1, "ICM R=%.1f P=%.1f Y=%.1f\r\n", (double)g_icm42688.roll, (double)g_icm42688.pitch, (double)g_icm42688.yaw);
-	/* 磁力计：只读缓存，不在打印任务里访问 I2C（读取在 SensorTask，20Hz） */
-	int16_t qx, qy, qz;
-	QMC_GetMag(&qx, &qy, &qz);
-	usart_printf(USART1, "QMC H=%.1f\r\n", (double)QMC_GetAngle());
-	usart_printf(USART1, "MAG x=%d y=%d z=%d\r\n", (int)qx, (int)qy, (int)qz);
 
+		usart_printf(USART1, "ICM R=%.1f P=%.1f Y=%.1f\r\n",
+		             (double)g_icm42688.roll, (double)g_icm42688.pitch, (double)g_icm42688.yaw);
 
-		#if 0  /* UART4 已关闭，CMD 回显暂时禁用 */
-		/* USART1 收到帧 s12,-34,56e → 打印 */
-		if (g_rxFrameReady != 0U)
-		{
-			g_rxFrameReady = 0U;
-			usart_printf(USART1, "CMD: count=%d", (int)g_rxFrameCount);
-			if (g_rxFrameCount > 0U) usart_printf(USART1, " [0]=%d", (int)g_rxFrame[0]);
-			if (g_rxFrameCount > 1U) usart_printf(USART1, " [1]=%d", (int)g_rxFrame[1]);
-			if (g_rxFrameCount > 2U) usart_printf(USART1, " [2]=%d", (int)g_rxFrame[2]);
-			usart_printf(USART1, "\r\n");
-		}
-#endif  /* UART4 已关闭 */
+		/* 磁力计：只读缓存，不在打印任务里访问 I2C（读取在 SensorTask，20Hz） */
+		int16_t qx, qy, qz;
+		QMC_GetMag(&qx, &qy, &qz);
+		usart_printf(USART1, "QMC H=%.1f\r\n", (double)QMC_GetAngle());
+		usart_printf(USART1, "MAG x=%d y=%d z=%d\r\n", (int)qx, (int)qy, (int)qz);
 
-	vTaskDelay(pdMS_TO_TICKS(TASK_PERIOD_DISPLAY));
+		vTaskDelay(pdMS_TO_TICKS(TASK_PERIOD_DISPLAY));
 	}
 }
 

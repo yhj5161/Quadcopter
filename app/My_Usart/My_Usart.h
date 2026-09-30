@@ -22,10 +22,9 @@
 
 /*
  * printf 默认输出串口（可在编译参数或上层头文件中重定义）。
- * 工程串口分工：
- *   USART1 (PB6/PB7, 115200) → 预留姿态传感器
- *   USART3 (PD8/PD9, 115200)  → 调试打印（PRINTF_USART）
- *   UART4  (PA0/PA1, 115200)  → 遥测/调试口
+ * 当前工程串口分工：
+ *   USART1 (PA9/PA10, 115200) → 遥测打印 + 串口控制（PRINTF_USART）
+ *   USART3 / UART4            → 已关闭（暂不使用 / 硬件未接）
  */
 #ifndef PRINTF_USART
 #define PRINTF_USART USART1

@@ -187,26 +187,18 @@ uint8_t ICM42688_Init(void)
 void ICM42688_ReadSensor(void)
 {
 	uint8_t frame[12];
-	uint8_t i;
 	float   norm;
 
 	if (g_icm42688.initialized == 0U) { return; }
 
 	/*
-	 * 布局(实测,与 OmniM0 一致): 0x1F 起 12 字节连续块
+	 * 布局(实测): 0x1F 起 12 字节连续块
 	 *   [0..5]=加速度  [6..7]=gx  [8..9]=gy  [10..11]=gz
 	 * 实测证据: gz 在偏移 10/11(0x29/0x2A) 有数据, 而非0x2B/0x2C。
 	 */
 	read_regs(REG_ACCEL_DATA_X1, frame, sizeof(frame));
 
-	/* 诊断: 保留 buf 供原始帧查看 */
-	for (i = 0U; i < sizeof(frame); i++)
-	{
-		g_icm42688.dbg_frame[i] = frame[i];
-	}
-	g_icm42688.int_status = read_reg(0x30U);
-
-	/* ── 记录原始 LSB（诊断用，注意：与 OmniM0 一致，不在驱动内翻转轴） ── */
+	/* ── 记录原始 LSB（诊断用；驱动内不做轴翻转，机体轴对齐在融合层处理） ── */
 	g_icm42688.raw_ax = make_i16(frame[0], frame[1]);
 	g_icm42688.raw_ay = make_i16(frame[2], frame[3]);
 	g_icm42688.raw_az = make_i16(frame[4], frame[5]);

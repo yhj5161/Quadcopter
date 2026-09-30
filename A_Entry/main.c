@@ -16,6 +16,7 @@
 #include "API_I2C.h"
 #include "API_SPI.h"
 #include "ICM42688.h"
+#include "QMC5883P.h"
 #include "Control_Task/Control_Task.h"
 
 /*BSP硬件抽象层*/
@@ -53,6 +54,13 @@
 #define TASK_PERIOD_CONTROL   (1U)
 #define TASK_PERIOD_SENSOR    (2U)
 #define TASK_PERIOD_DISPLAY   (50U)
+
+/*
+ * 磁力计读取分频：QMC ODR 200Hz，但融合只需要低频航向，
+ * 且软件 I2C 是阻塞式的（一次读约百微秒级），不适合塞进 2ms 节拍。
+ * 25 × 2ms = 50ms → 20Hz，数据仍然新鲜，且不挤占 SensorTask。
+ */
+#define MAG_READ_DIV          (25U)
 
 static void ControlTask(void *argument);
 static void SensorTask(void *argument);
@@ -101,9 +109,13 @@ int main(void)
 	NRF24L01_Init();
 	ICM42688_Init();
 
+	/* QMC5883P 磁力计初始化 + 读 ID 验证 */
+	QMC_Init();
+	usart_printf(USART1, "QMC ID=0x%02X\r\n", (unsigned)QMC_GetID());
+
 	/* BSP硬件抽象层初始化 */
 	LED_Init(LED_LOW);
-	LED_Control(LED1, LED_HIGH);
+	//LED_Control(LED3, LED_HIGH);
 	KEY_Init();
 	/* ======================== 创建任务，启动调度器 ======================== */
 	(void)xTaskCreate(ControlTask, "control", TASK_STACK_CONTROL, NULL, TASK_PRIO_CONTROL, NULL);
@@ -169,16 +181,27 @@ static void ControlTask(void *argument)
 
 /*
  * 传感器任务：读取 IMU 并更新姿态角（每 2ms / 500Hz）。
- * TODO: BMP280 气压计读取（定高）, QMC5883P 磁力计（Yaw 融合）。
+ * 磁力计按 MAG_READ_DIV 分频读取（20Hz），读一次刷新缓存。
+ * TODO: 磁力计轴对齐、零点标定、倾斜补偿、Yaw 融合；BMP280 气压计（定高）。
+ *       注意：当前磁力计航向是"相对角度"，零点未标定，不可当绝对航向用。
  */
 static void SensorTask(void *argument)
 {
 	(void)argument;
 	TickType_t lastWake = xTaskGetTickCount();
+	uint8_t    magDiv = 0U;
 
 	for (;;)
 	{
 		ICM42688_ReadSensor();
+
+		/* 磁力计 20Hz：分频读取，读一次即刷新缓存（显示/融合读缓存即可） */
+		if (++magDiv >= MAG_READ_DIV)
+		{
+			magDiv = 0U;
+			QMC_ReadSensor();
+		}
+
 		vTaskDelayUntil(&lastWake, pdMS_TO_TICKS(TASK_PERIOD_SENSOR));
 	}
 }
@@ -205,9 +228,11 @@ static void DisplayTask(void *argument)
 			}
 		}
 	usart_printf(USART1, "ICM R=%.1f P=%.1f Y=%.1f\r\n", (double)g_icm42688.roll, (double)g_icm42688.pitch, (double)g_icm42688.yaw);
-usart_printf(USART1, "gz16=%d gzreg=%d\r\n",
-             (int)g_icm42688.raw_gz,
-             (unsigned)g_icm42688.dbg_frame[12]);
+	/* 磁力计：只读缓存，不在打印任务里访问 I2C（读取在 SensorTask，20Hz） */
+	int16_t qx, qy, qz;
+	QMC_GetMag(&qx, &qy, &qz);
+	usart_printf(USART1, "QMC H=%.1f\r\n", (double)QMC_GetAngle());
+	usart_printf(USART1, "MAG x=%d y=%d z=%d\r\n", (int)qx, (int)qy, (int)qz);
 
 
 		#if 0  /* UART4 已关闭，CMD 回显暂时禁用 */

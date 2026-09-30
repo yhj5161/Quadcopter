@@ -24,7 +24,7 @@
  * printf 默认输出串口（可在编译参数或上层头文件中重定义）。
  * 当前工程串口分工：
  *   USART1 (PA9/PA10, 115200) → 遥测打印 + 串口控制（PRINTF_USART）
- *   USART3 / UART4            → 已关闭（暂不使用 / 硬件未接）
+ *   USART2 /USART3 / UART4            → 已关闭（暂不使用 / 硬件未接）
  */
 #ifndef PRINTF_USART
 #define PRINTF_USART USART1
